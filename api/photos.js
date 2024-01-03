@@ -1,141 +1,62 @@
-// var { printstr } = require('../utils.js');
-const utils = require('../utils.js');
-const { generateAuthToken, requireAuthentication } = require('../lib/auth')
+/*
+ * API sub-router for businesses collection endpoints.
+ */
 
-const router = require('express').Router();
-const { validateAgainstSchema, extractValidFields } = require('../lib/validation');
+const { Router } = require('express')
 
-exports.router = router;
+const { validateAgainstSchema } = require('../lib/validation')
+const {
+  PhotoSchema,
+  insertNewPhoto,
+  getPhotoById
+} = require('../models/photo')
 
-//
-// fetch all photos
-//
-router.get('/', requireAuthentication, async function (req, res, next) {
-    var photoslist = await utils.photosCollect.find({})
-    var allphotos = []
-    await photoslist.forEach(doc => {
-        // console.log(doc);
-        allphotos.push(doc);
-    });
-    res.status(200).send(allphotos)
+const router = Router()
+
+/*
+ * POST /photos - Route to create a new photo.
+ */
+router.post('/', async (req, res) => {
+  if (validateAgainstSchema(req.body, PhotoSchema)) {
+    try {
+      const id = await insertNewPhoto(req.body)
+      res.status(201).send({
+        id: id,
+        links: {
+          photo: `/photos/${id}`,
+          business: `/businesses/${req.body.businessId}`
+        }
+      })
+    } catch (err) {
+      console.error(err)
+      res.status(500).send({
+        error: "Error inserting photo into DB.  Please try again later."
+      })
+    }
+  } else {
+    res.status(400).send({
+      error: "Request body is not a valid photo object"
+    })
+  }
 })
 
 /*
- * Route to create a new photo.
+ * GET /photos/{id} - Route to fetch info about a specific photo.
  */
-router.post('/', requireAuthentication, async function (req, res, next) {
-    if (validateAgainstSchema(req.body, utils.photoSchema)) {
-        const newphoto = extractValidFields(req.body, utils.photoSchema);
-        var count = await utils.photosCollect.countDocuments();
-        newphoto.id = count;
-        await utils.photosCollect.insertOne(newphoto, function (err, res) {
-            if (err) {
-                console.log('insertOne failed: ' + err);
-                throw err;
-            }
-            console.log("insertOne successful");
-        });
-        res.status(201).json({
-            id: newphoto.id,
-            links: {
-                photo: '/photos/' + newphoto.id,
-                business: '/businesses/' + newphoto.businessId
-            }
-        });
+router.get('/:id', async (req, res, next) => {
+  try {
+    const photo = await getPhotoById(req.params.id)
+    if (photo) {
+      res.status(200).send(photo)
     } else {
-        res.status(400).json({
-            error: "Request body is not a valid business object"
-        });
+      next()
     }
-});
+  } catch (err) {
+    console.error(err)
+    res.status(500).send({
+      error: "Unable to fetch photo.  Please try again later."
+    })
+  }
+})
 
-/*
- * Route to fetch info about a specific photo.
- */
-router.get('/:photoID', requireAuthentication, async function (req, res, next) {
-    const photoid = parseInt(req.params.photoID);
-    // find photo with photoid
-    const photolist = await utils.photosCollect.find({
-        id: photoid
-    });
-    // create currentlist (this is to find length of photolist)
-    var currentlist = [];
-    await photolist.forEach(doc => {
-        currentlist.push(doc);
-        console.log(doc);
-    });
-    if (currentlist.length == 0) {
-        console.log('id (' + photoid + ') not found');
-        next();
-    } else {
-        res.status(200).json({
-            photos: currentlist
-        });
-    }
-});
-
-/*
- * Route to update a photo.
- */
-router.put('/:photoID', requireAuthentication, async function (req, res, next) {
-    const photoid = parseInt(req.params.photoID);
-    // find businesses with photoid
-    const photolist = await utils.photosCollect.find({
-        id: photoid
-    });
-    // create currentlist (this is to find length of photolist)
-    var currentlist = [];
-    await photolist.forEach(doc => {
-        currentlist.push(doc);
-        console.log(doc);
-    });
-    if (currentlist.length == 0) {
-        console.log('id (' + photoid + ') not found');
-        next();
-    } else {
-        if (validateAgainstSchema(req.body, utils.photoSchema)) {
-            const newphoto = extractValidFields(req.body, utils.photoSchema);
-            newphoto.id = photoid;
-            const result = await utils.photosCollect.replaceOne(
-                { id: photoid },
-                newphoto
-            );
-            res.status(200).json({
-                links: {
-                    photo: '/photos/' + photoid,
-                    business: '/businesses/' + newphoto.businessid,
-                }
-            });
-        } else {
-            res.status(400).json({
-                error: "Request body is not a valid photo object"
-            });
-        }
-    }
-});
-
-/*
- * Route to delete a photo.
- */
-router.delete('/:photoID', requireAuthentication,  async function (req, res, next) {
-    const photoid = parseInt(req.params.photoID);
-    // find businesses with photoid
-    const photolist = await utils.photosCollect.find({
-        id: photoid
-    });
-    // create currentlist (this is to find length of photolist)
-    var currentlist = [];
-    await photolist.forEach(doc => {
-        currentlist.push(doc);
-        console.log(doc);
-    });
-    if (currentlist.length == 0) {
-        console.log('id (' + photoid + ') not found');
-        next();
-    } else {
-        const result = await utils.photosCollect.deleteOne(
-            { id: photoid },
-        );
-        res.status(204).end();
-    }
-});
+module.exports = router
